@@ -7,7 +7,7 @@ name = "hermes-shield"
 version = "0.1.0"
 description = "Input sanitizer for AI agents — anti-prompt-injection shield"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = {text = "AGPL-3.0-or-later"}
 authors = [
     {name = "Pedro Sordo Martínez", email = "amurlaniakea@gmail.com"},
 ]
