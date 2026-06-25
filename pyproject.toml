@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-shield"
+version = "0.1.0"
+description = "Input sanitizer for AI agents — anti-prompt-injection shield"
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+authors = [
+    {name = "Pedro Sordo Martínez", email = "amurlaniakea@gmail.com"},
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "bandit>=1.7"]
+
+[project.scripts]
+hermes-shield = "hermes_shield:main"
