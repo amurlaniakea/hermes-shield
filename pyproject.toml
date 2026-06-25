@@ -24,6 +24,9 @@ classifiers = [
 ]
 dependencies = []
 
+[tool.setuptools]
+py-modules = ["hermes_shield", "layer2_semantic", "rate_limiter"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
