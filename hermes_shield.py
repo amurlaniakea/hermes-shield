@@ -9,15 +9,11 @@ Hermes Shield — Input Sanitizer for AI Agents.
 Escudo de entrada que protege a agentes AI de inputs maliciosos
 provenientes de fuentes externas (web, APIs, documentos, usuarios).
 
-Basado en la arquitectura de capas de Agent Fixer Stage
-(McAllister et al., 2026 — arXiv:2606.12709) pero aplicado
-a la ENTRADA del agente, no a la salida.
-
 Arquitectura de 4 capas (cortocircuitables):
 
-  Capa 0 — Normalización (unicode NFKC, leetspeak, zero-width chars)
+  Capa 0 — Rate Limiting (Token Bucket) + Normalización
   Capa 1 — Pattern matching con scoring ponderado (inyecciones conocidas)
-  Capa 2 — Embeddings ligeros (TF-IDF + cosine similarity) para paráfrasis
+  Capa 2 — Embeddings ONNX (all-MiniLM-L6-v2) con fallback TF-IDF
   Capa 3 — Heurística de urgencia/pressure (social engineering)
 
 Happy path (input limpio): solo Capa 0 + 1. Latencia ~30ms.
@@ -39,7 +35,10 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Optional
 
+from layer2_semantic import Layer2Detector
+from rate_limiter import TokenBucketRateLimiter
 
 # ────────────────────────────────────────────────────────────────────────────
 # Result types
@@ -349,10 +348,11 @@ class HermesShield:
         config = _load_config(sensitivity)
         self._threshold = {
             "block": config["block"],
-            "sanitize": config["block"] - 0.1,  # Slightly lower than block
+            "sanitize": config["block"] - 0.3,  # Significantly lower than block
         }
         self._layer2_enabled = config["layer2_enabled"]
-        self._embedding_checker = EmbeddingChecker(threshold=config["layer2_threshold"])
+        self._embedding_checker = Layer2Detector(threshold=config["layer2_threshold"])
+        self._rate_limiter = TokenBucketRateLimiter(rate=100, burst=200)
 
     def check(self, text: str) -> ShieldResult:
         """Analizar input externo.
@@ -360,6 +360,16 @@ class HermesShield:
         Returns:
             ShieldResult con status y score de amenaza.
         """
+        # Capa 0: Rate Limiting
+        if not self._rate_limiter.allow():
+            return ShieldResult(
+                status=ShieldStatus.BLOCKED,
+                original_input=text,
+                threat_score=1.0,
+                layer_triggered="rate_limiter",
+                patterns_matched=["rate_limit_exceeded"],
+            )
+
         if not text or not text.strip():
             return ShieldResult(
                 status=ShieldStatus.CLEAN,
