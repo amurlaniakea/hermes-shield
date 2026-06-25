@@ -93,7 +93,7 @@ class OnnxSemanticDetector:
                 # Try to download from Hugging Face
                 model_path = "onnx-community/all-MiniLM-L6-v2-onnx"
 
-            self._tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self._tokenizer = AutoTokenizer.from_pretrained(model_path)  # nosec B615 — local model, not remote download
             self.session = ort.InferenceSession(
                 f"{model_path}/model.onnx",
                 providers=['CPUExecutionProvider']
