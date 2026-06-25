@@ -33,6 +33,8 @@ cd hermes-shield
 pip install -e .
 ```
 
+*Alternative: `pip install .` for production installs.*
+
 ## Quick Start
 
 ```python
