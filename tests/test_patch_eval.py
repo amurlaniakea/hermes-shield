@@ -32,7 +32,6 @@ def patch_eval_data():
         dataset = load_dataset(
             "ByteDance/PatchEval",
             split="train",
-            trust_remote_code=True,
         )
         python_samples = [
             item for item in dataset
@@ -63,7 +62,7 @@ def extract_code_samples(patch_eval_data):
 
         for func in vul_funcs[:2]:
             if isinstance(func, dict):
-                code = func.get("code", "")
+                code = func.get("snippet", func.get("code", ""))
             else:
                 code = str(func)
             if code and len(code) > 10:
@@ -71,7 +70,7 @@ def extract_code_samples(patch_eval_data):
 
         for func in fix_funcs[:2]:
             if isinstance(func, dict):
-                code = func.get("code", "")
+                code = func.get("snippet", func.get("code", ""))
             else:
                 code = str(func)
             if code and len(code) > 10:
