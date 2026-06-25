@@ -25,7 +25,11 @@ Clean inputs bypass Layers 2-3 (short-circuit). Suspicious inputs get full analy
 
 ## Installation
 
+Clone the repository and install in editable mode:
+
 ```bash
+git clone https://github.com/amurlaniakea/hermes-shield.git
+cd hermes-shield
 pip install -e .
 ```
 
