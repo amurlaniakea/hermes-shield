@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-shield"
-version = "0.1.0"
+version = "0.2.0"
 description = "Input sanitizer for AI agents — anti-prompt-injection shield"
 readme = "README.md"
 license = {text = "AGPL-3.0-or-later"}
@@ -13,7 +13,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
@@ -25,7 +25,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "bandit>=1.7"]
+dev = ["pytest>=8.0", "bandit>=1.7", "datasets>=2.0", "huggingface-hub>=0.20"]
 
 [project.scripts]
 hermes-shield = "hermes_shield:main"
@@ -36,3 +36,29 @@ addopts = "-v --tb=short"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
+
+# ────────────────────────────────────────────────────────────────────────────
+# Hermes Shield Sensitivity Profiles
+# ────────────────────────────────────────────────────────────────────────────
+# Each profile adjusts detection thresholds for Layer 1 (pattern matching)
+# and Layer 2 (embedding similarity).
+
+[tool.hermes_shield]
+
+[tool.hermes_shield.profiles.low]
+description = "Permissive — minimal false positives, may miss sophisticated attacks"
+layer1_threshold = 0.8      # Only block high-confidence matches
+layer2_threshold = 0.4      # High bar for embedding similarity
+layer2_enabled = false      # Skip embedding analysis for speed
+
+[tool.hermes_shield.profiles.medium]
+description = "Balanced — recommended for production"
+layer1_threshold = 0.7
+layer2_threshold = 0.25
+layer2_enabled = true
+
+[tool.hermes_shield.profiles.high]
+description = "Strict — maximum detection, higher false positive rate"
+layer1_threshold = 0.5
+layer2_threshold = 0.15
+layer2_enabled = true

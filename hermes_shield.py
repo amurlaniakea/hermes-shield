@@ -298,6 +298,41 @@ class EmbeddingChecker:
 # Hermes Shield — Clase principal
 # ────────────────────────────────────────────────────────────────────────────
 
+def _load_config(profile: str = "medium") -> dict:
+    """Load sensitivity profile from pyproject.toml.
+
+    Reads [tool.hermes_shield.profiles.<profile>] section.
+    Falls back to hardcoded defaults if config not available.
+    """
+    defaults = {
+        "low": {"block": 0.8, "sanitize": 0.5, "layer2_enabled": False, "layer2_threshold": 0.4},
+        "medium": {"block": 0.7, "sanitize": 0.4, "layer2_enabled": True, "layer2_threshold": 0.25},
+        "high": {"block": 0.5, "sanitize": 0.3, "layer2_enabled": True, "layer2_threshold": 0.15},
+    }
+    try:
+        # Python 3.11+ has tomllib stdlib
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib
+        except ImportError:
+            return defaults.get(profile, defaults["medium"])
+
+    try:
+        with open("pyproject.toml", "rb") as f:
+            config = tomllib.load(f)
+        profiles = config.get("tool", {}).get("hermes_shield", {}).get("profiles", {})
+        profile_config = profiles.get(profile, {})
+        return {
+            "block": profile_config.get("layer1_threshold", defaults[profile]["block"]),
+            "sanitize": defaults[profile]["sanitize"],  # Derived from context
+            "layer2_enabled": profile_config.get("layer2_enabled", defaults[profile]["layer2_enabled"]),
+            "layer2_threshold": profile_config.get("layer2_threshold", defaults[profile]["layer2_threshold"]),
+        }
+    except (FileNotFoundError, KeyError):
+        return defaults.get(profile, defaults["medium"])
+
+
 class HermesShield:
     """Escudo de entrada para agentes AI.
 
@@ -311,13 +346,13 @@ class HermesShield:
             sensitivity: "low", "medium", "high"
         """
         self.sensitivity = sensitivity
-        self._thresholds = {
-            "low": {"block": 0.8, "sanitize": 0.5},
-            "medium": {"block": 0.7, "sanitize": 0.4},
-            "high": {"block": 0.6, "sanitize": 0.3},
+        config = _load_config(sensitivity)
+        self._threshold = {
+            "block": config["block"],
+            "sanitize": config["block"] - 0.1,  # Slightly lower than block
         }
-        self._threshold = self._thresholds.get(sensitivity, self._thresholds["medium"])
-        self._embedding_checker = EmbeddingChecker()
+        self._layer2_enabled = config["layer2_enabled"]
+        self._embedding_checker = EmbeddingChecker(threshold=config["layer2_threshold"])
 
     def check(self, text: str) -> ShieldResult:
         """Analizar input externo.
@@ -363,18 +398,19 @@ class HermesShield:
                 patterns_matched=patterns_matched,
             )
         elif score > 0:
-            # Zona gris → Capa 2 (embeddings)
-            is_suspicious, sim, matched = self._embedding_checker.check(normalized)
-            if is_suspicious:
-                combined_score = max(score, sim)
-                if combined_score >= self._threshold["block"]:
-                    return ShieldResult(
-                        status=ShieldStatus.BLOCKED,
-                        original_input=text,
-                        threat_score=combined_score,
-                        layer_triggered="embeddings",
-                        patterns_matched=patterns_matched + [f"embedding:{matched}"],
-                    )
+            # Zona gris → Capa 2 (embeddings) si está habilitada
+            if self._layer2_enabled:
+                is_suspicious, sim, matched = self._embedding_checker.check(normalized)
+                if is_suspicious:
+                    combined_score = max(score, sim)
+                    if combined_score >= self._threshold["block"]:
+                        return ShieldResult(
+                            status=ShieldStatus.BLOCKED,
+                            original_input=text,
+                            threat_score=combined_score,
+                            layer_triggered="embeddings",
+                            patterns_matched=patterns_matched + [f"embedding:{matched}"],
+                        )
             return ShieldResult(
                 status=ShieldStatus.CLEAN,
                 original_input=text,
