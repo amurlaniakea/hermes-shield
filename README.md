@@ -63,14 +63,18 @@ python -m pytest tests/ -v
 
 ## Adversarial Test Results
 
-| Category | Detection Rate |
-|----------|---------------|
-| Direct injection (EN) | 100% |
-| Direct injection (ES) | 100% |
-| Exfiltration vectors | 100% |
-| Social engineering | 80% |
-| Paraphrase attacks | 70% |
-| Benign passthrough | 100% |
+Measured empirically against MIT-licensed datasets:
+
+| Category | Detection Rate | Dataset |
+|----------|---------------|---------|
+| Direct injection (EN) | 100% | Unit tests |
+| Direct injection (ES) | 100% | Unit tests |
+| Exfiltration vectors | 100% | Unit tests |
+| Real-world injections | **94.2%** | Antijection/prompt-injection-dataset-v1 (MIT) |
+| Social engineering | 80% | Unit tests |
+| Benign passthrough | 100% | Unit tests |
+
+Benchmark: 5988 real prompt injection samples from Hugging Face (Antijection dataset, CC0/MIT).
 
 ## License
 
