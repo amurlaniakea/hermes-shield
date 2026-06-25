@@ -6,6 +6,8 @@ Hermes Shield protects AI agents from malicious inputs: prompt injection, data e
 
 AGPL-3.0-or-later licensed. Generic — works with any AI agent, not just Hermes.
 
+> **⚠️ Brand Clarification:** Hermes Shield is an independent open-source project. It is not affiliated, sponsored, or endorsed by **Nous Research** or their "Hermes Agent" ecosystem. Due to its agnostic middleware architecture, Hermes Shield is fully compatible as an input sanitization filter for Hermes Agent instances, as well as any other AI agent framework.
+
 ---
 
 ## Architecture
