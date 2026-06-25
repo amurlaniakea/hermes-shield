@@ -7,11 +7,21 @@ name = "hermes-shield"
 version = "0.1.0"
 description = "Input sanitizer for AI agents — anti-prompt-injection shield"
 readme = "README.md"
-license = {text = "AGPL-3.0-or-later"}
+license = {text = "Apache-2.0"}
 authors = [
     {name = "Pedro Sordo Martínez", email = "amurlaniakea@gmail.com"},
 ]
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
 dependencies = []
 
 [project.optional-dependencies]
@@ -19,3 +29,10 @@ dev = ["pytest>=8.0", "bandit>=1.7"]
 
 [project.scripts]
 hermes-shield = "hermes_shield:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.bandit]
+exclude_dirs = ["tests"]

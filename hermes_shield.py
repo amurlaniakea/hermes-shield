@@ -130,7 +130,7 @@ INJECTION_PATTERNS = [
     # Exfiltración (alto peso)
     (r'\b(send|exfiltrate|extract|leak|export|upload|transfer)\s+.*\b(data|passwords?|secrets?|keys?|tokens?|credentials?)\b', 0.9),
     (r'\b(api[_\s]?key|password|secret|token|credential)\s*(is|=|:)\s*\S{8,}', 0.95),
-    (r'\boutput\s+(your|the)\s+(system\s+)?(prompt|instructions?|config)\b', 0.9),
+    (r'\b(output|reveal|show|tell|give|print)\s+(me\s+)?(your|the)\s+(system\s+)?(prompt|instructions?|config|api[_\s]?key)\b', 0.9),
 
     # Ejecución de comandos (alto peso)
     (r'\b(execute|run|eval|exec)\s+.*\b(code|script|command|shell|bash)\b', 0.85),
