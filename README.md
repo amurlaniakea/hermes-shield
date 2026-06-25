@@ -4,7 +4,7 @@
 
 Hermes Shield protects AI agents from malicious inputs: prompt injection, data exfiltration, command execution, and social engineering. Works in English and Spanish.
 
-Apache 2.0 licensed. Generic — works with any AI agent, not just Hermes.
+AGPL-3.0-or-later licensed. Generic — works with any AI agent, not just Hermes.
 
 ---
 
@@ -72,7 +72,7 @@ python -m pytest tests/ -v
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+AGPL-3.0-or-later — see [LICENSE](LICENSE).
 
 Copyright (C) 2026 Pedro Sordo Martínez <amurlaniakea@gmail.com>.
 
