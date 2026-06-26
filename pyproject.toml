@@ -25,7 +25,7 @@ classifiers = [
 dependencies = []
 
 [tool.setuptools]
-py-modules = ["hermes_shield", "layer2_semantic", "rate_limiter", "analytics", "shield_integration"]
+py-modules = ["hermes_shield", "layer2_semantic", "rate_limiter", "analytics", "shield_integration", "shielded_agent"]
 
 [project.optional-dependencies]
 dev = [
