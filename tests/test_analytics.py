@@ -4,12 +4,18 @@
 import json
 import os
 import time
+from datetime import datetime, timezone
+
 import pytest
+
+import analytics
 from analytics import (
     AsyncAuditLogger,
     AuditEntry,
     log_threat,
     get_logger,
+    generate_weekly_report,
+    print_alert,
 )
 
 
@@ -154,3 +160,125 @@ class TestIntegration:
             assert entry["action_taken"] == "blocked"
             # Input should be truncated to 100 chars
             assert len(entry["input_preview"]) <= 100
+
+
+class TestWeeklyReport:
+    """Test weekly report generator."""
+
+    def test_empty_log(self, tmp_path):
+        """Report on non-existent log."""
+        report = analytics.generate_weekly_report(str(tmp_path / "nonexistent.log"))
+        assert "No audit log found" in report
+
+    def test_no_recent_threats(self, tmp_path):
+        """Report with old entries only."""
+        log_file = tmp_path / "audit.log"
+        old_entry = {
+            "timestamp": "2020-01-01T00:00:00+00:00",
+            "sensitivity": "medium",
+            "layer_triggered": "pattern_matching",
+            "threat_score": 0.9,
+            "category": "test",
+            "input_preview": "old",
+            "action_taken": "blocked",
+        }
+        with open(log_file, "w") as f:
+            f.write(json.dumps(old_entry) + "\n")
+
+        report = analytics.generate_weekly_report(str(log_file))
+        assert "No threats recorded in the last 7 days" in report
+
+    def test_report_with_recent_threats(self, tmp_path):
+        """Report with recent entries."""
+        log_file = tmp_path / "audit.log"
+        now = datetime.now(timezone.utc)
+
+        # Write 10 recent entries
+        with open(log_file, "w") as f:
+            for i in range(10):
+                entry = {
+                    "timestamp": now.isoformat(),
+                    "sensitivity": "medium",
+                    "layer_triggered": "pattern_matching",
+                    "threat_score": 0.5 + i * 0.05,
+                    "category": "prompt_injection",
+                    "input_preview": f"attempt {i}",
+                    "action_taken": "blocked",
+                }
+                f.write(json.dumps(entry) + "\n")
+
+        report = analytics.generate_weekly_report(str(log_file))
+        assert "Total threats detected" in report
+        assert "Distribution by Layer" in report
+        assert "Distribution by Category" in report
+        assert "Peak Activity Hours" in report
+
+    def test_report_statistics(self, tmp_path):
+        """Verify report calculates correct statistics."""
+        log_file = tmp_path / "audit.log"
+        now = datetime.now(timezone.utc)
+
+        with open(log_file, "w") as f:
+            # 5 blocked, 3 sanitized
+            for i in range(5):
+                entry = {
+                    "timestamp": now.isoformat(),
+                    "sensitivity": "high",
+                    "layer_triggered": "pattern_matching",
+                    "threat_score": 0.9,
+                    "category": "prompt_injection",
+                    "input_preview": "test",
+                    "action_taken": "blocked",
+                }
+                f.write(json.dumps(entry) + "\n")
+            for i in range(3):
+                entry = {
+                    "timestamp": now.isoformat(),
+                    "sensitivity": "medium",
+                    "layer_triggered": "embeddings",
+                    "threat_score": 0.5,
+                    "category": "suspicious",
+                    "input_preview": "test",
+                    "action_taken": "sanitized",
+                }
+                f.write(json.dumps(entry) + "\n")
+
+        report = analytics.generate_weekly_report(str(log_file))
+        assert "Total threats detected: **8**" in report
+        assert "Blocked: **5**" in report
+        assert "Sanitized: **3**" in report
+
+
+class TestPrintAlert:
+    """Test live alert printing."""
+
+    def test_alert_blocked(self, capsys):
+        """Blocked threats trigger alert."""
+        entry = AuditEntry(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            sensitivity="medium",
+            layer_triggered="pattern_matching",
+            threat_score=0.95,
+            category="prompt_injection",
+            input_preview="test",
+            action_taken="blocked",
+        )
+        analytics.print_alert(entry)
+        captured = capsys.readouterr()
+        assert "HERMES SHIELD ALERT" in captured.err
+        assert "0.95" in captured.err
+
+    def test_no_alert_clean(self, capsys):
+        """Clean entries don't trigger alert."""
+        entry = AuditEntry(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            sensitivity="medium",
+            layer_triggered="clean",
+            threat_score=0.0,
+            category="benign",
+            input_preview="test",
+            action_taken="logged",
+        )
+        analytics.print_alert(entry)
+        captured = capsys.readouterr()
+        assert captured.err == ""

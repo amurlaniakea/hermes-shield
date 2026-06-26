@@ -6,8 +6,9 @@
 """
 Hermes Shield — Analytics & Telemetry Module.
 
-Logs blocked attacks to local JSONL file asynchronously.
-Zero-latency: writes happen in background thread.
+- Async logging (zero-latency, background thread)
+- Live console alerts (ANSI colors, stderr)
+- Weekly report generator (CLI flag --report)
 """
 
 from __future__ import annotations
@@ -15,10 +16,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from queue import Queue, Empty
 from typing import Optional
 
@@ -169,32 +173,188 @@ def log_threat(
 # CLI / Testing
 # ────────────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    # Demo usage
-    audit = AsyncAuditLogger(log_path="test_audit.log")
-    audit.start()
+# ────────────────────────────────────────────────────────────────────────────
+# ANSI Color Codes (for terminal alerts)
+# ────────────────────────────────────────────────────────────────────────────
 
-    # Simulate logging some threats
-    for i in range(5):
-        log_threat(
-            sensitivity="medium",
-            layer_triggered="pattern_matching",
-            threat_score=0.9,
-            category="prompt_injection",
-            input_text=f"Ignore all previous instructions attempt {i}",
-            action_taken="blocked",
+class Colors:
+    """ANSI escape codes for terminal output."""
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    GREEN = "\033[92m"
+    CYAN = "\033[96m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
+
+def print_alert(entry: AuditEntry):
+    """Print live alert to stderr (non-blocking, pipe-safe).
+
+    Uses stderr to avoid breaking JSON/text pipes on stdout.
+    Only prints for blocked or high-score threats.
+    """
+    if entry.action_taken == "blocked" or entry.threat_score >= 0.8:
+        color = Colors.RED if entry.threat_score >= 0.9 else Colors.YELLOW
+        alert = (
+            f"\n{color}{Colors.BOLD}"
+            f"⚠️  [HERMES SHIELD ALERT] "
+            f"{Colors.RESET}{color}"
+            f"Prompt Injection Blocked! "
+            f"{Colors.RESET}\n"
+            f"   Layer: {entry.layer_triggered}\n"
+            f"   Threat Score: {Colors.BOLD}{entry.threat_score:.2f}{Colors.RESET}\n"
+            f"   Category: {entry.category}\n"
+            f"   Action: {entry.action_taken}\n"
+            f"   Time: {entry.timestamp}\n"
         )
+        # Write to stderr (pipe-safe: doesn't break stdout JSON)
+        sys.stderr.write(alert)
+        sys.stderr.flush()
 
-    time.sleep(0.5)  # Let background thread write
-    audit.stop()
 
-    # Show results
-    with open("test_audit.log") as f:
-        lines = f.readlines()
-        print(f"Logged {len(lines)} entries:")
-        for line in lines[:3]:
-            entry = json.loads(line)
-            print(f"  [{entry['action_taken']}] {entry['category']} (score={entry['threat_score']})")
+# ────────────────────────────────────────────────────────────────────────────
+# Weekly Report Generator
+# ────────────────────────────────────────────────────────────────────────────
 
-    os.remove("test_audit.log")
-    print("Demo complete.")
+def generate_weekly_report(log_path: str = "shield_audit.log") -> str:
+    """Generate weekly threat report from audit log.
+
+    Returns:
+        Formatted Markdown report string.
+    """
+    log_file = Path(log_path)
+    if not log_file.exists():
+        return "No audit log found. No threats recorded yet."
+
+    # Read last 7 days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    entries = []
+
+    with open(log_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                entry_time = datetime.fromisoformat(entry["timestamp"])
+                if entry_time >= cutoff:
+                    entries.append(entry)
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
+
+    if not entries:
+        return "No threats recorded in the last 7 days. 🛡️"
+
+    # Calculate statistics
+    total = len(entries)
+    blocked = sum(1 for e in entries if e["action_taken"] == "blocked")
+    sanitized = sum(1 for e in entries if e["action_taken"] == "sanitized")
+
+    # Distribution by layer
+    layer_dist = Counter(e.get("layer_triggered", "unknown") for e in entries)
+
+    # Distribution by category
+    category_dist = Counter(e.get("category", "unknown") for e in entries)
+
+    # Peak hours
+    hours = Counter(
+        datetime.fromisoformat(e["timestamp"]).hour for e in entries
+    )
+
+    # Average threat score
+    avg_score = sum(e.get("threat_score", 0) for e in entries) / total
+    max_score = max(e.get("threat_score", 0) for e in entries)
+
+    # Build report
+    report_lines = [
+        "",
+        f"{Colors.CYAN}{Colors.BOLD}",
+        "╔══════════════════════════════════════════════════════════════╗",
+        "║          HERMES SHIELD — WEEKLY THREAT REPORT              ║",
+        "╚══════════════════════════════════════════════════════════════╝",
+        f"{Colors.RESET}",
+        "",
+        f"**Period:** Last 7 days",
+        f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
+        f"{Colors.BOLD}Summary{Colors.RESET}",
+        f"  Total threats detected: **{total}**",
+        f"  Blocked: **{blocked}** | Sanitized: **{sanitized}**",
+        f"  Average threat score: **{avg_score:.2f}**",
+        f"  Max threat score: **{max_score:.2f}**",
+        "",
+        f"{Colors.BOLD}Distribution by Layer{Colors.RESET}",
+    ]
+
+    for layer, count in layer_dist.most_common():
+        bar = "█" * min(count, 40)
+        report_lines.append(f"  {layer:25s} {count:4d} {Colors.CYAN}{bar}{Colors.RESET}")
+
+    report_lines.append("")
+    report_lines.append(f"{Colors.BOLD}Distribution by Category{Colors.RESET}")
+
+    for cat, count in category_dist.most_common():
+        bar = "█" * min(count, 40)
+        report_lines.append(f"  {cat:25s} {count:4d} {Colors.YELLOW}{bar}{Colors.RESET}")
+
+    report_lines.append("")
+    report_lines.append(f"{Colors.BOLD}Peak Activity Hours (UTC){Colors.RESET}")
+
+    for hour, count in hours.most_common(5):
+        bar = "█" * min(count, 40)
+        report_lines.append(f"  {hour:02d}:00              {count:4d} {Colors.GREEN}{bar}{Colors.RESET}")
+
+    report_lines.extend([
+        "",
+        f"{Colors.GREEN}✓ Hermes Shield active — {blocked} attacks blocked this week.{Colors.RESET}",
+        "",
+    ])
+
+    return "\n".join(report_lines)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# CLI
+# ────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    if "--report" in sys.argv:
+        # Generate and print weekly report
+        log_path = "shield_audit.log"
+        if len(sys.argv) > 2 and not sys.argv[2].startswith("-"):
+            log_path = sys.argv[2]
+        report = generate_weekly_report(log_path)
+        print(report)
+    else:
+        # Demo usage
+        audit = AsyncAuditLogger(log_path="test_audit.log")
+        audit.start()
+
+        # Simulate logging some threats
+        for i in range(5):
+            entry = AuditEntry(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                sensitivity="medium",
+                layer_triggered="pattern_matching",
+                threat_score=0.9,
+                category="prompt_injection",
+                input_preview=f"Ignore all previous instructions attempt {i}",
+                action_taken="blocked",
+            )
+            audit.log(entry)
+            print_alert(entry)
+
+        time.sleep(0.5)  # Let background thread write
+        audit.stop()
+
+        # Show results
+        with open("test_audit.log") as f:
+            lines = f.readlines()
+            print(f"\nLogged {len(lines)} entries:")
+            for line in lines[:3]:
+                entry = json.loads(line)
+                print(f"  [{entry['action_taken']}] {entry['category']} (score={entry['threat_score']})")
+
+        os.remove("test_audit.log")
+        print("\nDemo complete.")
