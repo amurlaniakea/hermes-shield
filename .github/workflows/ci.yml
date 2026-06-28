@@ -28,7 +28,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          python -m pytest tests/test_shield.py -v --tb=short --cov=. --cov-report=xml
+          python -m pytest tests/test_shield.py -v --tb=short
 
   benchmark:
     runs-on: ubuntu-latest
