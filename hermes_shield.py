@@ -515,3 +515,4 @@ if __name__ == "__main__":
     else:
         print("\n[LIMPIO] Input seguro.")
         sys.exit(0)
+# Trigger SonarCloud re-analysis
