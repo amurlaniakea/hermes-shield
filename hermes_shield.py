@@ -100,16 +100,45 @@ _ZERO_WIDTH_RE = re.compile(
 
 
 def normalize_input(text: str) -> str:
-    """Normaliza texto para detección robusta de inyecciones."""
-    # Eliminar zero-width chars
+    """Normaliza texto para detección robusta de inyecciones.
+
+    Pasos (en orden):
+    1. Eliminar zero-width chars (invisibles, usados para evasión)
+    2. NFKC normaliza formas compatibles (ej: ① → 1, 全角 → medio-ancho)
+    3. Descomponer diacríticos (NFKD + strip categoría Mn) para que
+       "précédentes" y "precedentes" matcheen los mismos patrones.
+       Esto cubre el caso común de escritura sin acentos (teclados
+       ingleses, mensajería rápida, etc.) que NO es evasión sino
+       simplemente una variante ortográfica legítima del mismo idioma.
+    4. Mapear homoglyphs cirílicos (ofuscación por script similar)
+    5. Convertir leetspeak (1→i, 3→e, etc.)
+    """
+    # 1. Eliminar zero-width chars
     text = _ZERO_WIDTH_RE.sub('', text)
-    # Normalizar unicode (NFKC)
+    # 2. NFKC: normalizar formas compatibles
     text = unicodedata.normalize('NFKC', text)
-    # Mapear homoglyphs cirílicos
+    # 3. Descomponer diacríticos: NFKD separa base + marca combinante,
+    #    luego eliminamos las marcas (categoría Mn = Mark, Nonspacing).
+    #    é → e, ü → u, ñ → n, ç → c, etc.
+    text = _strip_diacritics(text)
+    # 4. Mapear homoglyphs cirílicos
     text = text.translate(_HOMOGLYPH_MAP)
-    # Convertir leetspeak
+    # 5. Convertir leetspeak
     text = text.translate(_LEET_MAP)
     return text
+
+
+def _strip_diacritics(text: str) -> str:
+    """Elimina diacríticos de un texto preservando la letra base.
+
+    Usa NFKD (compatibilidad decomposition) para separar letras de
+    sus marcas combinantes, luego filtra las marcas (categoría Mn).
+    Así 'précedentes' y 'precedentes' producen el mismo resultado.
+    """
+    return ''.join(
+        c for c in unicodedata.normalize('NFKD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -289,7 +318,35 @@ PORTUGUESE_PATTERNS = [
 ]
 
 # Combinar todos los patrones para Capa 1
-ALL_INJECTION_PATTERNS = INJECTION_PATTERNS + FRENCH_PATTERNS + GERMAN_PATTERNS + ITALIAN_PATTERNS + PORTUGUESE_PATTERNS
+_ALL_RAW_PATTERNS = INJECTION_PATTERNS + FRENCH_PATTERNS + GERMAN_PATTERNS + ITALIAN_PATTERNS + PORTUGUESE_PATTERNS
+
+
+def _compile_patterns_with_diacritic_variants(patterns):
+    """Compila patrones generando variantes sin diacríticos.
+
+    Por cada patrón (regex, weight), genera una versión adicional donde
+    los caracteres con diacrítico se reemplazan por su base (é→e, ü→u...).
+    Así un patrón escrito con acentos también matchea texto sin acentos,
+    y viceversa (el texto ya llega sin acentos por normalize_input).
+    """
+    compiled = []
+    for regex_str, weight in patterns:
+        # Versión original (por si el texto conserva acentos en algún flujo)
+        try:
+            compiled.append((re.compile(regex_str, re.IGNORECASE), weight))
+        except re.error:
+            continue
+        # Versión sin diacríticos del patrón
+        stripped_regex = _strip_diacritics(regex_str)
+        if stripped_regex != regex_str:
+            try:
+                compiled.append((re.compile(stripped_regex, re.IGNORECASE), weight))
+            except re.error:
+                pass
+    return compiled
+
+
+ALL_INJECTION_PATTERNS = _compile_patterns_with_diacritic_variants(_ALL_RAW_PATTERNS)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -552,10 +609,10 @@ class HermesShield:
         # Capa 1: Pattern matching (EN + ES + FR + DE + IT + PT)
         score = 0.0
         patterns_matched = []
-        for pattern, weight in ALL_INJECTION_PATTERNS:
-            if re.search(pattern, normalized, re.IGNORECASE):
+        for compiled_pattern, weight in ALL_INJECTION_PATTERNS:
+            if compiled_pattern.search(normalized):
                 score = max(score, weight)
-                patterns_matched.append(pattern)
+                patterns_matched.append(compiled_pattern.pattern)
 
         # Si pattern matching es concluyente, decidir directamente
         if score >= self._threshold["block"]:
