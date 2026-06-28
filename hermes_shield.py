@@ -435,7 +435,7 @@ class HermesShield:
 
         # Capa 3: Heurística de urgencia/pressure
         urgency_score = self._check_urgency(normalized)
-        if urgency_score >= 0.5:
+        if urgency_score >= 0.3:
             return ShieldResult(
                 status=ShieldStatus.SANITIZED,
                 original_input=text,
@@ -462,16 +462,26 @@ class HermesShield:
 
         Usa suma acumulativa (capped a 1.0) para que múltiples señales
         débiles combinadas puedan superar el umbral de activación.
+        Cada palabra/frase tiene su propio peso para que múltiples señales
+        dentro de una misma categoría también sumen.
         """
         urgency_patterns = [
-            (r'\b(urgent|urgently|immediately|asap|right now)\b', 0.3),
-            (r"\b(act\s+now|don't\s+delay|time\s+sensitive)\b", 0.4),
-            (r"\b(before\s+it's\s+too\s+late|critical\s+emergency)\b", 0.5),
+            # Urgencia individual (cada palabra suma)
+            (r'\b(urgent|urgently)\b', 0.15),
+            (r'\bimmediately\b', 0.15),
+            (r'\b(asap|right now)\b', 0.15),
+            # Acción inmediata
+            (r"\bact\s+now\b", 0.2),
+            (r"\bdon't\s+delay\b", 0.2),
+            (r"\btime\s+sensitive\b", 0.2),
+            # Presión extrema
+            (r"\bbefore\s+it's\s+too\s+late\b", 0.25),
+            (r"\bcritical\s+emergency\b", 0.25),
         ]
         score = 0.0
         for pattern, weight in urgency_patterns:
-            if re.search(pattern, text, re.IGNORECASE):
-                score += weight
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            score += len(matches) * weight
         return min(score, 1.0)
 
 
