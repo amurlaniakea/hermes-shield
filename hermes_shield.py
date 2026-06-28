@@ -75,9 +75,13 @@ class ShieldResult:
 # ────────────────────────────────────────────────────────────────────────────
 
 _LEET_MAP = str.maketrans({
-    '@': 'a', '4': 'a', '3': 'e', '1': 'i', '0': 'o',
-    '5': 's', '7': 't', '$': 's', '+': 't', '9': 'g',
-    '(': 'c', '!': 'i', '|': 'l', '&': 'and',
+    '@': 'a', '3': 'e', '1': 'i', '0': 'o',
+    '5': 's', '7': 't', '9': 'g',
+    # NOTA: '(', '!', '|', '$', '+', '4' excluidos del mapa.
+    # Estos caracteres son sintaxis de código/comandos (ej: os.system(), eval(),
+    # pipe |, $var, ++, base64). Normalizarlos destruye la información que Capa 1
+    # necesita para detectar ejecución de comandos y ofuscamiento.
+    '&': 'and',
 })
 
 _HOMOGLYPH_MAP = str.maketrans({
@@ -134,6 +138,7 @@ INJECTION_PATTERNS = [
 
     # Ejecución de comandos (alto peso)
     (r'\b(execute|run|eval|exec)\s+.*\b(code|script|command|shell|bash)\b', 0.85),
+    (r'\b(eval|exec)\s*\(', 0.7),
     (r'\bos\.system\b', 0.8),
     (r'\bsubprocess\b', 0.7),
     (r'\b__import__\b', 0.7),
@@ -430,7 +435,7 @@ class HermesShield:
 
         # Capa 3: Heurística de urgencia/pressure
         urgency_score = self._check_urgency(normalized)
-        if urgency_score > 0.5:
+        if urgency_score >= 0.5:
             return ShieldResult(
                 status=ShieldStatus.SANITIZED,
                 original_input=text,
@@ -453,17 +458,21 @@ class HermesShield:
         return sanitized
 
     def _check_urgency(self, text: str) -> float:
-        """Detectar tácticas de urgencia/pressure."""
+        """Detectar tácticas de urgencia/pressure.
+
+        Usa suma acumulativa (capped a 1.0) para que múltiples señales
+        débiles combinadas puedan superar el umbral de activación.
+        """
         urgency_patterns = [
             (r'\b(urgent|urgently|immediately|asap|right now)\b', 0.3),
-            (r'\b(act\s+now|don\'t\s+delay|time\s+sensitive)\b', 0.4),
-            (r'\b(before\s+it\'s\s+too\s+late|critical\s+emergency)\b', 0.5),
+            (r"\b(act\s+now|don't\s+delay|time\s+sensitive)\b", 0.4),
+            (r"\b(before\s+it's\s+too\s+late|critical\s+emergency)\b", 0.5),
         ]
         score = 0.0
         for pattern, weight in urgency_patterns:
             if re.search(pattern, text, re.IGNORECASE):
-                score = max(score, weight)
-        return score
+                score += weight
+        return min(score, 1.0)
 
 
 # ────────────────────────────────────────────────────────────────────────────
