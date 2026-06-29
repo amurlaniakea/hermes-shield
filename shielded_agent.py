@@ -199,7 +199,7 @@ class ShieldedAgent:
         except ShieldBlockedError:
             # Detección legítima — volver a lanzar
             raise
-        except Exception as e:
+        except Exception:
             # Fallo interno del shield: log + fail-open (dejar pasar)
             logger.exception(
                 "HermesShield internal error (fail-open) | input_preview=%.80s",

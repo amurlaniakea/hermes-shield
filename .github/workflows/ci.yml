@@ -107,6 +107,11 @@ jobs:
           python -m pytest tests/ --cov=. --cov-report=xml:coverage.xml --cov-report=term-missing -q
         shell: bash
 
+      - name: Verify coverage file exists
+        run: |
+          ls -la coverage.xml
+          head -2 coverage.xml
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@0303d6b62e310685c0e34d0b9cde218036885c4d  # v5.0.0
         env:

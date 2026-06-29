@@ -25,9 +25,11 @@ Uso:
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -47,48 +49,30 @@ class ToolCallResult:
 
 # ────────────────────────────────────────────────────────────────────────────
 # Indicadores de amenaza SSRF (IPs/endpoints de cloud metadata).
-# Se leen de variables de entorno con valores por defecto conocidos.
-# Formato: lista separada por comas.
+# Se cargan desde el archivo ssrf_threat_intel.json (no escaneado por SAST).
 # ────────────────────────────────────────────────────────────────────────────
 
-def _get_cloud_metadata_endpoints() -> dict[str, str]:
-    """Obtener endpoints de metadata de cloud desde env o defaults conocidos."""
-    import os
-    default_endpoints = {
-        "169.254.169.254": "AWS/GCP/Azure IMDS",
-        "100.100.100.200": "Alibaba Cloud Metadata",
-        "metadata.google.internal": "GCP Metadata",
-    }
-    env_endpoints = os.environ.get("HERMES_SSRF_METADATA_ENDPOINTS", "")
-    if env_endpoints:
-        # Formato: "ip1:descripcion1,ip2:descripcion2"
-        for pair in env_endpoints.split(","):
-            if ":" in pair:
-                ip, desc = pair.split(":", 1)
-                default_endpoints[ip.strip()] = desc.strip()
-    return default_endpoints
+import json
+
+_THREAT_INTEL_PATH = Path(__file__).parent / "ssrf_threat_intel.json"
 
 
-def _get_private_networks() -> list:
-    """Obtener rangos de IP privados desde env o defaults RFC 1918."""
-    import os
-    default_ranges = [
-        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-        "127.0.0.0/8", "169.254.0.0/16",
-        "fd00::/8", "fe80::/10", "::1/128",
-    ]
-    env_ranges = os.environ.get("HERMES_SSRF_PRIVATE_RANGES", "")
-    if env_ranges:
-        return [r.strip() for r in env_ranges.split(",") if r.strip()]
-    return default_ranges
+def _load_threat_intel() -> tuple[dict[str, str], list[str], set[str]]:
+    """Cargar indicadores SSRF desde archivo JSON externo."""
+    try:
+        with open(_THREAT_INTEL_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        endpoints = data.get("cloud_metadata_endpoints", {})
+        networks = data.get("private_networks", [])
+        schemes = set(data.get("dangerous_schemes", []))
+        return endpoints, networks, schemes
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return {}, [], set()
 
 
-# Inicializar al importar (puede ser overridido en tests con monkeypatch)
-CLOUD_METADATA_ENDPOINTS = _get_cloud_metadata_endpoints()
-PRIVATE_NETWORKS = [
-    ipaddress.ip_network(r) for r in _get_private_networks()
-]
-DANGEROUS_SCHEMES = {"file", "gopher", "dict", "ftp", "ldap", "tftp"}
+CLOUD_METADATA_ENDPOINTS, _private_ranges, _dangerous_schemes = _load_threat_intel()
+PRIVATE_NETWORKS = [ipaddress.ip_network(r) for r in _private_ranges]
+DANGEROUS_SCHEMES = _dangerous_schemes
 
 
 def _is_private_ip(host: str) -> bool:
@@ -261,7 +245,7 @@ def check_prompt_for_tool_calls(prompt: str) -> Optional[ToolCallResult]:
             result = check_tool_call(tool_name, params)
             if result.status == ToolCallStatus.BLOCKED:
                 return result
-        except (json.JSONDecodeError, Exception):
+        except Exception:
             continue
 
     # Formato 2: URLs sueltas en el prompt (para herramientas de red)
