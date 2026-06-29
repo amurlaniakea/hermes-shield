@@ -148,7 +148,7 @@ def _strip_diacritics(text: str) -> str:
 # No enumeramos scripts "sospechosos" (lista infinita), sino los pocos que SÍ
 # conocemos; todo lo demás cae en el fallback genérico.
 _KNOWN_SCRIPT_RANGES = [
-    (0x0041, 0x007A, "Latin"),          # A-Z, a-z básicos
+    (0x0000, 0x007F, "ASCII"),        # ASCII completo (incluye < > ! / etc.)
     (0x00C0, 0x024F, "Latin_Extended"), # Latin-1 Supplement + Extended-A/B
     (0x1E00, 0x1EFF, "Latin_Extended_Additional"),
 ]
