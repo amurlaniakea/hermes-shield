@@ -27,9 +27,9 @@ jobs:
           pip install --only-binary :all: -e ".[dev]"
         shell: bash
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: |
-          python -m pytest tests/test_shield.py -v --tb=short
+          python -m pytest tests/ --cov=. --cov-report=xml:coverage.xml --cov-report=term-missing -v --tb=short
         shell: bash
 
   benchmark:

@@ -160,11 +160,12 @@ if _os.environ.get("HERMES_SHIELD_DISABLED", "").lower() not in ("1", "true", "y
         import sys as _sys
         _sys.path.insert(0, "{ep.parent}")
         from shielded_agent import ShieldedAgent as _ShieldedAgent
+        import logging as _logging
+        _shield_logger = _logging.getLogger("hermes_shield")
         _shield_agent = None  # lazy init
         _original_input = input
         def _shielded_input(prompt=""):
             raw = _original_input(prompt)
-            # Only validate if looks like a user message (heuristic: not empty)
             if raw.strip() and _shield_agent is None:
                 try:
                     _shield_agent = _ShieldedAgent(
@@ -175,8 +176,10 @@ if _os.environ.get("HERMES_SHIELD_DISABLED", "").lower() not in ("1", "true", "y
                     return raw  # fail-open
             return raw
         input = _shielded_input
-    except Exception:
-        pass  # fail-open: shield import failed, continue unprotected
+    except Exception as _e:
+        # fail-open: shield import failed, log and continue unprotected
+        import logging as _logging
+        _logging.getLogger("hermes_shield").exception("Shield wrapper failed to initialize: %s", _e)
 {WRAPPER_END}
 '''
 

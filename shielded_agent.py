@@ -311,6 +311,14 @@ class FullDefenseAgent(ShieldedAgent):
     def _call_via_proxy(self, user_input: str, system_prompt: Optional[str] = None, **kwargs) -> str:
         """Send request through local misdirection-proxy."""
         import httpx
+        from urllib.parse import urlparse
+
+        # Validar URL del proxy (solo esquemas http/https, sin credenciales embebidas)
+        parsed = urlparse(self.misdirection_proxy_url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"Invalid proxy scheme: {parsed.scheme}")
+        if parsed.username or parsed.password:
+            raise ValueError("Proxy URL must not contain embedded credentials")
 
         headers = {"Content-Type": "application/json"}
         messages = []
