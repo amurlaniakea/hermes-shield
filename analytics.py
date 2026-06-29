@@ -237,7 +237,7 @@ def generate_weekly_report(log_path: str = DEFAULT_AUDIT_LOG) -> str:
                 entry_time = datetime.fromisoformat(entry["timestamp"])
                 if entry_time >= cutoff:
                     entries.append(entry)
-            except (json.JSONDecodeError, KeyError, ValueError):
+            except (ValueError, KeyError):
                 continue
 
     if not entries:
@@ -318,7 +318,13 @@ if __name__ == "__main__":
         # Generate and print weekly report
         log_path = DEFAULT_AUDIT_LOG
         if len(sys.argv) > 2 and not sys.argv[2].startswith("-"):
-            log_path = sys.argv[2]
+            # Validar path para prevenir path traversal
+            import os.path
+            candidate = os.path.normpath(sys.argv[2])
+            if ".." in candidate.split(os.sep):
+                print("ERROR: Path traversal not allowed", file=sys.stderr)
+                sys.exit(1)
+            log_path = candidate
         report = generate_weekly_report(log_path)
         print(report)
     else:

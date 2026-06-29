@@ -258,22 +258,4 @@ def check_prompt_for_tool_calls(prompt: str) -> Optional[ToolCallResult]:
     return None
 
 
-if __name__ == "__main__":
-    # PoC rápido
-    print("=== PoC SSRF Detection ===\n")
 
-    test_cases = [
-        ("fetch_resource", {"url": "http://169.254.169.254/latest/meta-data/"}, "AWS metadata"),
-        ("fetch_resource", {"url": "http://10.0.0.1/admin"}, "Private IP"),
-        ("fetch_resource", {"url": "http://192.168.1.1/config"}, "Private IP"),
-        ("webhook", {"callback_url": "file:///etc/passwd"}, "File scheme"),
-        ("api_call", {"endpoint": "http://example.com/api"}, "Safe URL"),
-        ("fetch", {"url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/"}, "IMDS"),
-    ]
-
-    for tool, args, desc in test_cases:
-        result = check_tool_call(tool, args)
-        status_icon = "BLOCKED" if result.status == ToolCallStatus.BLOCKED else "SAFE"
-        print(f"  [{status_icon:7s}] {desc:30s} | {tool}({args})")
-        if result.details:
-            print(f"           → {result.details}")
