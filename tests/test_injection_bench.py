@@ -186,6 +186,19 @@ def extract_hlyn_samples(dataset, limit=500):
 class TestAntijectionBenchmark:
     """Benchmark against Antijection/prompt-injection-dataset-v1."""
 
+    @pytest.fixture(autouse=True)
+    def disable_rate_limiter(self, monkeypatch):
+        """Neutralizar rate limiter para benchmarks (burst=200 insuficiente)."""
+        import hermes_shield
+
+        original_init = hermes_shield.HermesShield.__init__
+
+        def patched_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            self._rate_limiter = type("FakeRL", (), {"allow": lambda self: True})()
+
+        monkeypatch.setattr(hermes_shield.HermesShield, "__init__", patched_init)
+
     def test_detection_rate_medium(self, antijection_data):
         """Medium sensitivity on Antijection dataset."""
         shield = HermesShield(sensitivity="medium")
@@ -261,6 +274,19 @@ class TestAntijectionBenchmark:
 
 class TestHlynLabsBenchmark:
     """Benchmark against hlyn-labs/prompt-injection-judge-dataset-v1."""
+
+    @pytest.fixture(autouse=True)
+    def disable_rate_limiter(self, monkeypatch):
+        """Neutralizar rate limiter para benchmarks (burst=200 insuficiente)."""
+        import hermes_shield
+
+        original_init = hermes_shield.HermesShield.__init__
+
+        def patched_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            self._rate_limiter = type("FakeRL", (), {"allow": lambda self: True})()
+
+        monkeypatch.setattr(hermes_shield.HermesShield, "__init__", patched_init)
 
     def test_detection_rate_medium(self, hlyn_labs_data):
         """Medium sensitivity on hlyn-labs dataset.
