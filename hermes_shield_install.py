@@ -71,10 +71,35 @@ def _find_input_calls(content: str) -> list[tuple[int, str]]:
     return results
 
 
-def install(entrypoint: str) -> bool:
-    """Install Hermes Shield wrapper on entry    Returns True on success, False on failure (no changes made).
+def _validate_safe_path(path_str: str) -> Path:
+    """Validar que un path es seguro (sin directory traversal).
+
+    Rechaza paths que contengan '..' para evitar salir del directorio
+    intencionadamente.
+
+    Raises:
+        ValueError: Si el path intenta traversal con '..'
     """
-    ep = Path(entrypoint)
+    # NOSONAR — explicitamente rechazamos traversal; es la validacion de seguridad
+    normalized = os.path.normpath(path_str)
+    if ".." in normalized.split(os.sep):
+        raise ValueError(
+            f"Path '{path_str}' contains '..' which is not allowed for safety."
+        )
+    return Path(normalized)
+
+
+def install(entrypoint: str) -> bool:
+    """Install Hermes Shield wrapper on entrypoint.
+
+    Returns True on success, False on failure (no changes made).
+    """
+    try:
+        ep = _validate_safe_path(entrypoint)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return False
+
     backup_path = ep.with_suffix(ep.suffix + BACKUP_SUFFIX)
 
     # Validate entrypoint
@@ -168,7 +193,7 @@ if _os.environ.get("HERMES_SHIELD_DISABLED", "").lower() not in ("1", "true", "y
     new_hash = _sha256(str(ep))
     print(f"✓ Entrypoint patched: {entrypoint} (SHA-256: {new_hash[:16]}...)")
     print(f"  To uninstall: python hermes_shield_install.py uninstall {entrypoint}")
-    print(f"  To disable temporarily: HERMES_SHIELD_DISABLED=1")
+    print("  To disable temporarily: HERMES_SHIELD_DISABLED=1")
     return True
 
 
@@ -177,7 +202,12 @@ def uninstall(entrypoint: str) -> bool:
 
     Returns True on success, False on failure.
     """
-    ep = Path(entrypoint)
+    try:
+        ep = _validate_safe_path(entrypoint)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return False
+
     backup_path = Path(str(ep) + BACKUP_SUFFIX)
 
     if not ep.exists():
@@ -186,7 +216,7 @@ def uninstall(entrypoint: str) -> bool:
 
     if not backup_path.exists():
         print(f"ERROR: No backup found at '{backup_path}'.", file=sys.stderr)
-        print(f"  Cannot safely restore. Manual intervention required.", file=sys.stderr)
+        print("  Cannot safely restore. Manual intervention required.", file=sys.stderr)
         return False
 
     # Read backup (the original)
@@ -210,13 +240,18 @@ def uninstall(entrypoint: str) -> bool:
     # Now safe to remove backup
     backup_path.unlink()
     print(f"✓ Backup removed: {backup_path}")
-    print(f"  '{entrypoint}' is now 100% original, byte-for-byte.")
+    print(f"  Entrypoint '{entrypoint}' is now 100% original, byte-for-byte.")
     return True
 
 
 def status(entrypoint: str) -> None:
     """Show shield status of entrypoint."""
-    ep = Path(entrypoint)
+    try:
+        ep = _validate_safe_path(entrypoint)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return
+
     backup_path = Path(str(ep) + BACKUP_SUFFIX)
 
     if not ep.exists():

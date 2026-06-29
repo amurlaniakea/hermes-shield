@@ -201,9 +201,8 @@ class ShieldedAgent:
             raise
         except Exception as e:
             # Fallo interno del shield: log + fail-open (dejar pasar)
-            logger.error(
-                "HermesShield internal error (fail-open): %s | input_preview=%.80s",
-                e,
+            logger.exception(
+                "HermesShield internal error (fail-open) | input_preview=%.80s",
                 user_input[:80],
             )
             return self._call_api(user_input, system_prompt, **kwargs)

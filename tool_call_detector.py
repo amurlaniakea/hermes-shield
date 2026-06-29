@@ -46,34 +46,49 @@ class ToolCallResult:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Direcciones de metadata de cloud conocidas (fijas, estables, documentadas)
+# Indicadores de amenaza SSRF (IPs/endpoints de cloud metadata).
+# Se leen de variables de entorno con valores por defecto conocidos.
+# Formato: lista separada por comas.
 # ────────────────────────────────────────────────────────────────────────────
 
-CLOUD_METADATA_ENDPOINTS = {
-    # AWS / GCP / Azure Instance Metadata Service
-    "169.254.169.254": "AWS/GCP/Azure IMDS",
-    "169.254.169.256": "legacy)",
-    # Alibaba Cloud
-    "100.100.100.200": "Alibaba Cloud Metadata",
-    # Hostnames de metadata
-    "metadata.google.internal": "GCP Metadata",
-    "metadata.internal": "Generic cloud metadata",
-}
+def _get_cloud_metadata_endpoints() -> dict[str, str]:
+    """Obtener endpoints de metadata de cloud desde env o defaults conocidos."""
+    import os
+    default_endpoints = {
+        "169.254.169.254": "AWS/GCP/Azure IMDS",
+        "100.100.100.200": "Alibaba Cloud Metadata",
+        "metadata.google.internal": "GCP Metadata",
+    }
+    env_endpoints = os.environ.get("HERMES_SSRF_METADATA_ENDPOINTS", "")
+    if env_endpoints:
+        # Formato: "ip1:descripcion1,ip2:descripcion2"
+        for pair in env_endpoints.split(","):
+            if ":" in pair:
+                ip, desc = pair.split(":", 1)
+                default_endpoints[ip.strip()] = desc.strip()
+    return default_endpoints
 
-# Esquemas peligrosos en contexto de fetch/callback
-DANGEROUS_SCHEMES = {"file", "gopher", "dict", "ftp", "ldap", "tftp"}
 
-# Rangos de IP privados/internos (RFC 1918 + loopback + link-local)
+def _get_private_networks() -> list:
+    """Obtener rangos de IP privados desde env o defaults RFC 1918."""
+    import os
+    default_ranges = [
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+        "127.0.0.0/8", "169.254.0.0/16",
+        "fd00::/8", "fe80::/10", "::1/128",
+    ]
+    env_ranges = os.environ.get("HERMES_SSRF_PRIVATE_RANGES", "")
+    if env_ranges:
+        return [r.strip() for r in env_ranges.split(",") if r.strip()]
+    return default_ranges
+
+
+# Inicializar al importar (puede ser overridido en tests con monkeypatch)
+CLOUD_METADATA_ENDPOINTS = _get_cloud_metadata_endpoints()
 PRIVATE_NETWORKS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),  # Link-local (incluye IMDS)
-    ipaddress.ip_network("fd00::/8"),        # IPv6 unique local
-    ipaddress.ip_network("fe80::/10"),       # IPv6 link-local
-    ipaddress.ip_network("::1/128"),         # IPv6 loopback
+    ipaddress.ip_network(r) for r in _get_private_networks()
 ]
+DANGEROUS_SCHEMES = {"file", "gopher", "dict", "ftp", "ldap", "tftp"}
 
 
 def _is_private_ip(host: str) -> bool:
@@ -151,6 +166,46 @@ def _check_url(url: str) -> Optional[ToolCallResult]:
     return None
 
 
+def _extract_strings_from_args(arguments: dict) -> list[str]:
+    """Extraer todos los valores string de un dict de argumentos."""
+    result = []
+    for value in arguments.values():
+        if isinstance(value, str):
+            result.append(value)
+        elif isinstance(value, dict):
+            result.extend(str(v) for v in value.values() if isinstance(v, str))
+        elif isinstance(value, list):
+            result.extend(str(v) for v in value if isinstance(v, str))
+    return result
+
+
+def _is_network_tool(tool_name: str) -> bool:
+    """Verificar si una herramienta es de red/URL."""
+    network_tools = {
+        "fetch", "fetch_resource", "http_request", "request",
+        "webhook", "callback", "api_call", "download", "upload",
+        "get", "post", "put", "delete",
+    }
+    tool_lower = tool_name.lower()
+    return tool_lower in network_tools or "url" in tool_lower or "fetch" in tool_lower
+
+
+def _check_ips_in_text(texts: list[str]) -> Optional[ToolCallResult]:
+    """Buscar IPs privadas en textos de argumentos."""
+    ip_pattern = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
+    for text in texts:
+        for match in ip_pattern.finditer(text):
+            ip = match.group(1)
+            if _is_private_ip(ip):
+                return ToolCallResult(
+                    status=ToolCallStatus.BLOCKED,
+                    threat_score=0.9,
+                    layer_triggered="ssrf_detector",
+                    details=f"Private IP in tool argument: {ip}",
+                )
+    return None
+
+
 def check_tool_call(tool_name: str, arguments: dict) -> ToolCallResult:
     """
     Verificar una tool-call por indicadores de SSRF/tool-hijacking.
@@ -162,49 +217,20 @@ def check_tool_call(tool_name: str, arguments: dict) -> ToolCallResult:
     Returns:
         ToolCallResult con status y detalles
     """
-    # Herramientas de red/URL son las de mayor riesgo
-    network_tools = {
-        "fetch", "fetch_resource", "http_request", "request",
-        "webhook", "callback", "api_call", "download", "upload",
-        "get", "post", "put", "delete",
-    }
-
-    tool_lower = tool_name.lower()
-
-    # Extraer todos los valores string de los argumentos
-    all_text = []
-    for key, value in arguments.items():
-        if isinstance(value, str):
-            all_text.append(value)
-        elif isinstance(value, dict):
-            all_text.extend(str(v) for v in value.values() if isinstance(v, str))
-        elif isinstance(value, list):
-            all_text.extend(str(v) for v in value if isinstance(v, str))
-
+    all_text = _extract_strings_from_args(arguments)
     combined_text = " ".join(all_text)
 
-    # Bus argumentos
-    urls = extract_urls_from_text(combined_text)
-
-    for url in urls:
+    # Verificar URLs encontradas
+    for url in extract_urls_from_text(combined_text):
         result = _check_url(url)
         if result is not None:
             return result
 
-    # Si la herramienta es de red pero no encontramos URL, verificar si hay
-    # argumentos que parecen IPs sueltas
-    if tool_lower in network_tools or "url" in tool_lower or "fetch" in tool_lower:
-        ip_pattern = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
-        for text in all_text:
-            for match in ip_pattern.finditer(text):
-                ip = match.group(1)
-                if _is_private_ip(ip):
-                    return ToolCallResult(
-                        status=ToolCallStatus.BLOCKED,
-                        threat_score=0.9,
-                        layer_triggered="ssrf_detector",
-                        details=f"Private IP in tool argument: {ip}",
-                    )
+    # Si es herramienta de red, buscar IPs sueltas
+    if _is_network_tool(tool_name):
+        result = _check_ips_in_text(all_text)
+        if result is not None:
+            return result
 
     return ToolCallResult(
         status=ToolCallStatus.SAFE,

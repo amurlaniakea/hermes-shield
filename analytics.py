@@ -122,7 +122,9 @@ class AsyncAuditLogger:
                     for entry in entries:
                         f.write(entry.to_json() + "\n")
             except OSError as e:
-                logger.error("Failed to write audit log: %s", e, exc_info=True)
+                logger.exception(
+                    "Failed to write audit log: %s", e
+                )
 
     def _flush_remaining(self):
         """Flush any remaining entries in queue."""

@@ -584,7 +584,7 @@ class HermesShield:
         normalized = normalize_input(text)
         script_uncovered, script_desc = detect_uncovered_script(normalized)
 
-        # Capa 4: Detección de SSRF/tool-hijacking en parámetros estructurados
+        # Capa 4: Detección de SSRF/tool-hijacking/email-injection en params estructurados
         from tool_call_detector import check_prompt_for_tool_calls
         tool_call_result = check_prompt_for_tool_calls(text)
         if tool_call_result and tool_call_result.status.value == "blocked":
@@ -596,6 +596,10 @@ class HermesShield:
                 patterns_matched=[tool_call_result.details],
                 script_info=script_desc,
             )
+
+        # Nota: email_injection_detector.check_email_params() se integra
+        # desde ShieldedAgent cuando tool_name es send_email/email/send,
+        # no aqui (requiere params estructurados, no texto libre).
 
         score, patterns_matched = self._score_patterns(normalized)
 
