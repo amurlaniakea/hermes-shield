@@ -210,6 +210,52 @@ class ShieldedAgent:
         # Step 2: Call the API
         return self._call_api(safe_input, system_prompt, **kwargs)
 
+    def check_tool_invocation(self, tool_name: str, arguments: dict) -> None:
+        """Verificar una tool-call antes de ejecutarla.
+
+        Punto de entrada unico para detectores de Capa 4 (SSRF, email-injection,
+        tool-hijacking futuro). Despacha al detector segun el tipo de herramienta.
+
+        Args:
+            tool_name: Nombre de la herramienta a ejecutar
+            arguments: Diccionario de argumentos de la tool-call
+
+        Raises:
+            ShieldBlockedError: Si la tool-call es bloqueada por seguridad
+
+        Uso:
+            agent.check_tool_invocation('send_email', {'subject': 'Hi', 'body': '...'})
+        """
+        from tool_call_detector import check_tool_call, ToolCallStatus
+        from email_injection_detector import check_email_params
+
+        # 1. Deteccion de email-injection para herramientas de correo
+        email_tools = {"send_email", "email", "send_mail", "notify_by_email", "mail"}
+        if tool_name.lower() in email_tools:
+            result = check_email_params(arguments)
+            if result.status == ToolCallStatus.BLOCKED:
+                raise ShieldBlockedError(
+                    f"Hermes Shield: Tool-call '{tool_name}' bloqueada. "
+                    f"Capa: {result.layer_triggered} | Motivo: {result.details}",
+                    threat_score=result.threat_score,
+                    layer=result.layer_triggered,
+                )
+            return
+
+        # 2. Deteccion de SSRF para herramientas con URLs/endpoints
+        url_arg_names = {"url", "endpoint", "callback_url", "webhook", "target", "host", "uri", "address"}
+        has_url_args = url_arg_names.intersection(k.lower() for k in arguments.keys())
+        network_tools = {"fetch", "request", "download", "upload", "webhook", "api_call", "http_get", "http_post"}
+        if has_url_args or tool_name.lower() in network_tools:
+            result = check_tool_call(tool_name, arguments)
+            if result.status == ToolCallStatus.BLOCKED:
+                raise ShieldBlockedError(
+                    f"Hermes Shield: Tool-call '{tool_name}' bloqueada. "
+                    f"Capa: {result.layer_triggered} | Motivo: {result.details}",
+                    threat_score=result.threat_score,
+                    layer=result.layer_triggered,
+                )
+
     def _call_api(
         self,
         user_input: str,
