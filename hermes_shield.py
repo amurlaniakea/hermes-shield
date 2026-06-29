@@ -153,8 +153,9 @@ _KNOWN_SCRIPT_RANGES = [
     (0x1E00, 0x1EFF, "Latin_Extended_Additional"),
 ]
 
-# Marcadores Unicode de puntuación/espaciado comunes a muchos scripts
-_IGNORE_CATEGORIES = {"Zs", "Zl", "Zp", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po"}
+# Marcadores Unicode de puntuación/espaciado/símbolos comunes a muchos scripts
+# Sm=símbolos matemáticos (< > = + ~), Sc=símbolos de moneda ($), Sk=modificadores (^)
+_IGNORE_CATEGORIES = {"Zs", "Zl", "Zp", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Sm", "Sc", "Sk"}
 
 
 def detect_uncovered_script(text: str) -> Tuple[bool, str]:
