@@ -245,7 +245,7 @@ def check_prompt_for_tool_calls(prompt: str) -> Optional[ToolCallResult]:
             result = check_tool_call(tool_name, params)
             if result.status == ToolCallStatus.BLOCKED:
                 return result
-        except Exception:
+        except Exception:  # nosec B112 — expected: skip malformed JSON in prompt
             continue
 
     # Formato 2: URLs sueltas en el prompt (para herramientas de red)
