@@ -40,9 +40,7 @@ from typing import Optional, Tuple
 from layer2_semantic import Layer2Detector
 from rate_limiter import TokenBucketRateLimiter
 
-# ────────────────────────────────────────────────────────────────────────────
 # Result types
-# ────────────────────────────────────────────────────────────────────────────
 
 class ShieldStatus(Enum):
     CLEAN = "clean"        # Input seguro
@@ -72,9 +70,7 @@ class ShieldResult:
         return self.status in (ShieldStatus.SANITIZED, ShieldStatus.BLOCKED)
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Capa 0 — Normalización anti-evasión
-# ────────────────────────────────────────────────────────────────────────────
 
 _LEET_MAP = str.maketrans({
     '@': 'a', '3': 'e', '1': 'i', '0': 'o',
@@ -141,9 +137,7 @@ def _strip_diacritics(text: str) -> str:
     )
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Capa 1.5 — Detección de script no cubierto
-# ────────────────────────────────────────────────────────────────────────────
 # Los patrones de inyección (Capa 1) y el banco semántico (Capa 2) cubren
 # idiomas basados en alfabeto latino (EN, ES, FR, DE, IT, PT...). Cuando un
 # input usa un script fuera de ese conjunto (árabe, chino, cirílico, etc.),
@@ -193,9 +187,7 @@ def detect_uncovered_script(text: str) -> Tuple[bool, str]:
     return False, ""
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Capa 1 — Pattern Matching (inyecciones conocidas)
-# ────────────────────────────────────────────────────────────────────────────
 
 # Patrones de inyección con pesos (score de amenaza)
 INJECTION_PATTERNS = [
@@ -245,9 +237,7 @@ INJECTION_PATTERNS = [
     (r'\bthis\s+is\s+(a|an)\s+(test|simulation|drill)\b.*\b(ignore|bypass|disable)\b', 0.8),
 ]
 
-# ────────────────────────────────────────────────────────────────────────────
 # Patrones por idioma (modulares, auditable por cobertura)
-# ────────────────────────────────────────────────────────────────────────────
 
 # Francés — no solo traducción literal, sino variantes naturales
 FRENCH_PATTERNS = [
@@ -349,9 +339,7 @@ def _compile_patterns_with_diacritic_variants(patterns):
 ALL_INJECTION_PATTERNS = _compile_patterns_with_diacritic_variants(_ALL_RAW_PATTERNS)
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Capa 2 — Embeddings (detección de paráfrasis)
-# ────────────────────────────────────────────────────────────────────────────
 
 class TfidfEmbedder:
     """TF-IDF embeddings ligeros sin dependencias pesadas."""
@@ -516,9 +504,7 @@ class EmbeddingChecker:
         return is_suspicious, max_sim, matched
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Hermes Shield — Clase principal
-# ────────────────────────────────────────────────────────────────────────────
 
 def _load_config(profile: str = "medium") -> dict:
     """Load sensitivity profile from pyproject.toml.
@@ -583,15 +569,9 @@ class HermesShield:
         Returns:
             ShieldResult con status y score de amenaza.
         """
-        # Capa 0: Rate Limiting
-        if not self._rate_limiter.allow():
-            return ShieldResult(
-                status=ShieldStatus.BLOCKED,
-                original_input=text,
-                threat_score=1.0,
-                layer_triggered="rate_limiter",
-                patterns_matched=["rate_limit_exceeded"],
-            )
+        rate_limited = self._check_rate_limit(text)
+        if rate_limited:
+            return rate_limited
 
         if not text or not text.strip():
             return ShieldResult(
@@ -600,21 +580,47 @@ class HermesShield:
                 threat_score=0.0,
             )
 
-        # Capa 0: Normalizar
         normalized = normalize_input(text)
-
-        # Capa 1.5: Detección de script no cubierto
         script_uncovered, script_desc = detect_uncovered_script(normalized)
 
-        # Capa 1: Pattern matching (EN + ES + FR + DE + IT + PT)
+        score, patterns_matched = self._score_patterns(normalized)
+
+        pattern_result = self._decide_by_patterns(text, score, patterns_matched, script_desc)
+        if pattern_result is not None:
+            return pattern_result
+
+        if score > 0:
+            return self._handle_gray_zone(text, normalized, score, patterns_matched, script_desc)
+
+        if script_uncovered:
+            return self._handle_uncovered_script(text, normalized, script_desc)
+
+        return self._check_urgency_fallback(text, normalized)
+
+    def _check_rate_limit(self, text: str) -> ShieldResult | None:
+        """Capa 0: Rate limiting."""
+        if not self._rate_limiter.allow():
+            return ShieldResult(
+                status=ShieldStatus.BLOCKED,
+                original_input=text,
+                threat_score=1.0,
+                layer_triggered="rate_limiter",
+                patterns_matched=["rate_limit_exceeded"],
+            )
+        return None
+
+    def _score_patterns(self, normalized: str) -> tuple[float, list[str]]:
+        """Capa 1: pattern matching. Retorna score y patrones."""
         score = 0.0
         patterns_matched = []
         for compiled_pattern, weight in ALL_INJECTION_PATTERNS:
             if compiled_pattern.search(normalized):
                 score = max(score, weight)
                 patterns_matched.append(compiled_pattern.pattern)
+        return score, patterns_matched
 
-        # Si pattern matching es concluyente, decidir directamente
+    def _decide_by_patterns(self, text: str, score: float, patterns_matched: list[str], script_desc: str) -> ShieldResult | None:
+        """Decidir resultado basado en score de patterns."""
         if score >= self._threshold["block"]:
             return ShieldResult(
                 status=ShieldStatus.BLOCKED,
@@ -624,75 +630,73 @@ class HermesShield:
                 patterns_matched=patterns_matched,
                 script_info=script_desc,
             )
-        elif score >= self._threshold["sanitize"]:
-            sanitized = self._sanitize(text, patterns_matched)
+        if score >= self._threshold["sanitize"]:
             return ShieldResult(
                 status=ShieldStatus.SANITIZED,
                 original_input=text,
-                sanitized_input=sanitized,
+                sanitized_input=self._sanitize(text, patterns_matched),
                 threat_score=score,
                 layer_triggered="pattern_matching",
                 patterns_matched=patterns_matched,
                 script_info=script_desc,
             )
-        elif score > 0:
-            # Zona gris → Capa 2 (embeddings) si está habilitada
-            if self._layer2_enabled:
-                is_suspicious, sim, matched = self._embedding_checker.check(normalized)
-                if is_suspicious:
-                    combined_score = max(score, sim)
-                    if combined_score >= self._threshold["block"]:
-                        return ShieldResult(
-                            status=ShieldStatus.BLOCKED,
-                            original_input=text,
-                            threat_score=combined_score,
-                            layer_triggered="embeddings",
-                            patterns_matched=patterns_matched + [f"embedding:{matched}"],
-                            script_info=script_desc,
-                        )
-            return ShieldResult(
-                status=ShieldStatus.CLEAN,
-                original_input=text,
-                threat_score=score * 0.5,
-                layer_triggered="clean_after_embeddings",
-                script_info=script_desc,
-            )
+        return None
 
-        # Capa 1.5b: Script no cubierto + score=0 → forzar Capa 2 o marcar incertidumbre
-        if script_uncovered:
-            if self._layer2_enabled:
-                is_suspicious, sim, matched = self._embedding_checker.check(normalized)
-                if is_suspicious:
-                    return ShieldResult(
-                        status=ShieldStatus.SANITIZED,
-                        original_input=text,
-                        threat_score=sim,
-                        layer_triggered="embeddings_for_uncovered_script",
-                        patterns_matched=[f"embedding:{matched}"],
-                        script_info=script_desc,
-                    )
-                # Capa 2 tampoco pudo evaluar (sim demasiado bajo) → incertidumbre
+    def _handle_gray_zone(self, text: str, normalized: str, score: float, patterns_matched: list[str], script_desc: str) -> ShieldResult:
+        """Capa 1.7: Zona gris → verificar con embeddings si habilitado."""
+        if self._layer2_enabled:
+            is_suspicious, sim, matched = self._embedding_checker.check(normalized)
+            if is_suspicious and max(score, sim) >= self._threshold["block"]:
                 return ShieldResult(
-                    status=ShieldStatus.CLEAN,
+                    status=ShieldStatus.BLOCKED,
                     original_input=text,
-                    threat_score=0.0,
-                    layer_triggered="uncertain_uncovered_script",
-                    uncertain=True,
-                    details={"reason": f"Script no cubierto ({script_desc}) sin match lexico ni semantico. No se puede evaluar confianza."},
+                    threat_score=max(score, sim),
+                    layer_triggered="embeddings",
+                    patterns_matched=patterns_matched + [f"embedding:{matched}"],
                     script_info=script_desc,
                 )
-            # Capa 2 no habilitada + script no cubierto → incertidumbre
+        return ShieldResult(
+            status=ShieldStatus.CLEAN,
+            original_input=text,
+            threat_score=score * 0.5,
+            layer_triggered="clean_after_embeddings",
+            script_info=script_desc,
+        )
+
+    def _handle_uncovered_script(self, text: str, normalized: str, script_desc: str) -> ShieldResult:
+        """Capa 1.5b: Script no cubierto sin score léxico → embeddings o incertidumbre."""
+        if self._layer2_enabled:
+            is_suspicious, sim, matched = self._embedding_checker.check(normalized)
+            if is_suspicious:
+                return ShieldResult(
+                    status=ShieldStatus.SANITIZED,
+                    original_input=text,
+                    threat_score=sim,
+                    layer_triggered="embeddings_for",
+                    patterns_matched=[f"embedding:{matched}"],
+                    script_info=script_desc,
+                )
             return ShieldResult(
                 status=ShieldStatus.CLEAN,
                 original_input=text,
                 threat_score=0.0,
-                layer_triggered="uncertain_layer2_disabled",
+                layer_triggered="uncertain_uncovered_script",
                 uncertain=True,
-                details={"reason": f"Script no cubierto ({script_desc}) sin Capa 2 disponible. Posible bypass."},
+                details={"reason": f"Script no cubierto ({script_desc}) sin match lexico ni semantico. No se puede evaluar confianza."},
                 script_info=script_desc,
             )
+        return ShieldResult(
+            status=ShieldStatus.CLEAN,
+            original_input=text,
+            threat_score=0.0,
+            layer_triggered="uncertain_layer2_disabled",
+            uncertain=True,
+            details={"reason": f"Script no cubierto ({script_desc}) sin Capa 2 disponible. Posible bypass."},
+            script_info=script_desc,
+        )
 
-        # Capa 3: Heurística de urgencia/pressure
+    def _check_urgency_fallback(self, text: str, normalized: str) -> ShieldResult:
+        """Capa 3: Heurística de urgencia/pressure como último recurso."""
         urgency_score = self._check_urgency(normalized)
         if urgency_score >= 0.3:
             return ShieldResult(
@@ -702,7 +706,6 @@ class HermesShield:
                 threat_score=urgency_score,
                 layer_triggered="urgency_heuristic",
             )
-
         return ShieldResult(
             status=ShieldStatus.CLEAN,
             original_input=text,
@@ -744,9 +747,7 @@ class HermesShield:
         return min(score, 1.0)
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # CLI
-# ────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import sys

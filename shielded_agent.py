@@ -247,9 +247,7 @@ class ShieldedAgent:
         return response.json()["choices"][0]["message"]["content"]
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Integration with misdirection-proxy
-# ────────────────────────────────────────────────────────────────────────────
 
 class FullDefenseAgent(ShieldedAgent):
     """Extended agent with both inbound (Shield) and outbound (Misdirection) protection.
@@ -277,13 +275,17 @@ class FullDefenseAgent(ShieldedAgent):
             return self._call_via_proxy(user_input, system_prompt, **kwargs)
         return super()._call_api(user_input, system_prompt, **kwargs)
 
-    def _call_via_proxy(self, user_input: str, system_prompt=None, **kwargs) -> str:
+    def _call_via_proxy(self, user_input: str, system_prompt: Optional[str] = None, **kwargs) -> str:
         """Send request through local misdirection-proxy."""
         import httpx
 
         headers = {"Content-Type": "application/json"}
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_input})
         payload = {
-            "messages": [{"role": "user", "content": user_input}],
+            "messages": messages,
             "model": self.model,
         }
 
@@ -297,9 +299,7 @@ class FullDefenseAgent(ShieldedAgent):
         return response.json()["choices"][0]["message"]["content"]
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # CLI
-# ────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse

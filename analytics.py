@@ -28,6 +28,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_AUDIT_LOG = "shield_audit.log"
+TEST_AUDIT_LOG = "test_audit.log"
+
 
 @dataclass
 class AuditEntry:
@@ -52,7 +55,7 @@ class AsyncAuditLogger:
 
     def __init__(
         self,
-        log_path: str = "shield_audit.log",
+        log_path: str = DEFAULT_AUDIT_LOG,
         flush_interval: float = 1.0,
         max_queue_size: int = 10000,
     ):
@@ -119,7 +122,7 @@ class AsyncAuditLogger:
                     for entry in entries:
                         f.write(entry.to_json() + "\n")
             except OSError as e:
-                logger.error("Failed to write audit log: %s", e)
+                logger.error("Failed to write audit log: %s", e, exc_info=True)
 
     def _flush_remaining(self):
         """Flush any remaining entries in queue."""
@@ -132,14 +135,12 @@ class AsyncAuditLogger:
         self._write_batch(remaining)
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Global singleton instance
-# ────────────────────────────────────────────────────────────────────────────
 
 _default_logger: Optional[AsyncAuditLogger] = None
 
 
-def get_logger(log_path: str = "shield_audit.log") -> AsyncAuditLogger:
+def get_logger(log_path: str = DEFAULT_AUDIT_LOG) -> AsyncAuditLogger:
     """Get or create the global audit logger singleton."""
     global _default_logger
     if _default_logger is None:
@@ -169,13 +170,9 @@ def log_threat(
     get_logger().log(entry)
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # CLI / Testing
-# ────────────────────────────────────────────────────────────────────────────
 
-# ────────────────────────────────────────────────────────────────────────────
 # ANSI Color Codes (for terminal alerts)
-# ────────────────────────────────────────────────────────────────────────────
 
 class Colors:
     """ANSI escape codes for terminal output."""
@@ -212,11 +209,9 @@ def print_alert(entry: AuditEntry):
         sys.stderr.flush()
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # Weekly Report Generator
-# ────────────────────────────────────────────────────────────────────────────
 
-def generate_weekly_report(log_path: str = "shield_audit.log") -> str:
+def generate_weekly_report(log_path: str = DEFAULT_AUDIT_LOG) -> str:
     """Generate weekly threat report from audit log.
 
     Returns:
@@ -275,7 +270,7 @@ def generate_weekly_report(log_path: str = "shield_audit.log") -> str:
         "╚══════════════════════════════════════════════════════════════╝",
         f"{Colors.RESET}",
         "",
-        f"**Period:** Last 7 days",
+        "**Period:** Last 7 days",
         f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
         f"{Colors.BOLD}Summary{Colors.RESET}",
@@ -314,21 +309,19 @@ def generate_weekly_report(log_path: str = "shield_audit.log") -> str:
     return "\n".join(report_lines)
 
 
-# ────────────────────────────────────────────────────────────────────────────
 # CLI
-# ────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     if "--report" in sys.argv:
         # Generate and print weekly report
-        log_path = "shield_audit.log"
+        log_path = DEFAULT_AUDIT_LOG
         if len(sys.argv) > 2 and not sys.argv[2].startswith("-"):
             log_path = sys.argv[2]
         report = generate_weekly_report(log_path)
         print(report)
     else:
         # Demo usage
-        audit = AsyncAuditLogger(log_path="test_audit.log")
+        audit = AsyncAuditLogger(log_path=TEST_AUDIT_LOG)
         audit.start()
 
         # Simulate logging some threats
@@ -349,12 +342,12 @@ if __name__ == "__main__":
         audit.stop()
 
         # Show results
-        with open("test_audit.log") as f:
+        with open(TEST_AUDIT_LOG) as f:
             lines = f.readlines()
             print(f"\nLogged {len(lines)} entries:")
             for line in lines[:3]:
                 entry = json.loads(line)
                 print(f"  [{entry['action_taken']}] {entry['category']} (score={entry['threat_score']})")
 
-        os.remove("test_audit.log")
+        os.remove(TEST_AUDIT_LOG)
         print("\nDemo complete.")

@@ -230,7 +230,6 @@ class Layer2Detector:
     def _check_onnx(self, text: str) -> tuple:
         """Check using ONNX model."""
         try:
-            text_emb = self._onnx.embed(text)
             max_sim = 0.0
             matched = ""
             for example in self._get_malicious_examples():

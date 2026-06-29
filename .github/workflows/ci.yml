@@ -89,15 +89,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+        shell: bash
 
       - name: Run tests
         env:
           CI: "true"
         run: |
           python -m pytest tests/test_shield.py -q
+        shell: bash
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@9b553c6b4c413e7dfc79f0c7c12f4c3a750c3376  # v5.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
