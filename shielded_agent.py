@@ -47,9 +47,15 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-# Kill switch: si esta variable de entorno existe y es "1"/"true"/"yes",
-# el shield se desactiva por completo (passthrough total, cero latencia).
-_SHIELD_DISABLED = os.environ.get("HERMES_SHIELD_DISABLED", "").lower() in ("1", "true", "yes", "on")
+
+def is_shield_disabled() -> bool:
+    """Comprobar si el kill switch está activo.
+
+    Lee os.environ en cada llamada (no cacheado) para permitir toggle
+    en caliente dentro del mismo proceso — imprescindible en sesiones
+    largas del TUI de Hermes donde reiniciar no es práctico.
+    """
+    return os.environ.get("HERMES_SHIELD_DISABLED", "").lower() in ("1", "true", "yes", "on")
 
 
 class ShieldBlockedError(Exception):
@@ -182,8 +188,8 @@ class ShieldedAgent:
             se captura la excepción, se logea, y se deja pasar el input sin
             bloquear. Un fallo del shield NUNCA tira abajo al agente protegido.
         """
-        # Kill switch — desactivación instantánea
-        if _SHIELD_DISABLED:
+        # Kill switch — desactivación instantánea (lee entorno en cada llamada)
+        if is_shield_disabled():
             return self._call_api(user_input, system_prompt, **kwargs)
 
         # Validación con fail-open: cualquier error interno del shield
