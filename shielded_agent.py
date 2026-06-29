@@ -47,6 +47,10 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+# Kill switch: si esta variable de entorno existe y es "1"/"true"/"yes",
+# el shield se desactiva por completo (passthrough total, cero latencia).
+_SHIELD_DISABLED = os.environ.get("HERMES_SHIELD_DISABLED", "").lower() in ("1", "true", "yes", "on")
+
 
 class ShieldBlockedError(Exception):
     """Raised when Hermes Shield blocks a malicious input."""
@@ -170,9 +174,33 @@ class ShieldedAgent:
 
         Raises:
             ShieldBlockedError: If input is blocked
+
+        Kill switch:
+            Si HERMES_SHIELD_DISABLED=1 (o "true"/"yes"/"on"), el shield
+            se salta por completo — passthrough total, cero validación.
+            Fail-open: si el shield falla internamente (bug, dependencia rota),
+            se captura la excepción, se logea, y se deja pasar el input sin
+            bloquear. Un fallo del shield NUNCA tira abajo al agente protegido.
         """
-        # Step 1: Validate input through shield
-        safe_input = self._validate_input(user_input)
+        # Kill switch — desactivación instantánea
+        if _SHIELD_DISABLED:
+            return self._call_api(user_input, system_prompt, **kwargs)
+
+        # Validación con fail-open: cualquier error interno del shield
+        # resulta en passthrough (con log), NUNCA en excepción propagada.
+        try:
+            safe_input = self._validate_input(user_input)
+        except ShieldBlockedError:
+            # Detección legítima — volver a lanzar
+            raise
+        except Exception as e:
+            # Fallo interno del shield: log + fail-open (dejar pasar)
+            logger.error(
+                "HermesShield internal error (fail-open): %s | input_preview=%.80s",
+                e,
+                user_input[:80],
+            )
+            return self._call_api(user_input, system_prompt, **kwargs)
 
         # Step 2: Call the API
         return self._call_api(safe_input, system_prompt, **kwargs)
