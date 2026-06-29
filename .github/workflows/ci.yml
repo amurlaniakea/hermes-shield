@@ -100,11 +100,11 @@ jobs:
           pip install pytest-cov
         shell: bash
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           CI: "true"
         run: |
-          python -m pytest tests/test_shield.py -q
+          python -m pytest tests/ --cov=. --cov-report=xml:coverage.xml --cov-report=term-missing -q
         shell: bash
 
       - name: SonarCloud Scan
