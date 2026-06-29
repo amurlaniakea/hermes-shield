@@ -584,6 +584,19 @@ class HermesShield:
         normalized = normalize_input(text)
         script_uncovered, script_desc = detect_uncovered_script(normalized)
 
+        # Capa 4: Detección de SSRF/tool-hijacking en parámetros estructurados
+        from tool_call_detector import check_prompt_for_tool_calls
+        tool_call_result = check_prompt_for_tool_calls(text)
+        if tool_call_result and tool_call_result.status.value == "blocked":
+            return ShieldResult(
+                status=ShieldStatus.BLOCKED,
+                original_input=text,
+                threat_score=tool_call_result.threat_score,
+                layer_triggered=tool_call_result.layer_triggered,
+                patterns_matched=[tool_call_result.details],
+                script_info=script_desc,
+            )
+
         score, patterns_matched = self._score_patterns(normalized)
 
         pattern_result = self._decide_by_patterns(text, score, patterns_matched, script_desc)
