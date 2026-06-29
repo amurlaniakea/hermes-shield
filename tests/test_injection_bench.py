@@ -129,7 +129,7 @@ def extract_antijection_samples(dataset, limit=500):
 
         if label == "malicious":
             malicious.append(prompt)
-        elif label == "benign":
+        elif label in ("benign", "safe"):  # Antijection HF usa "safe", no "benign"
             benign.append(prompt)
 
         if len(malicious) >= limit and len(benign) >= limit:
