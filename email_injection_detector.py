@@ -23,6 +23,11 @@ from __future__ import annotations
 import re
 from tool_call_detector import ToolCallResult, ToolCallStatus
 
+# Precompilado a nivel de módulo para evitar recompilación por llamada
+# y mitigar ReDoS (S5852): input se limita a 500 chars antes de aplicar
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,10}")
+_MAX_EMAIL_SCAN_LEN = 500
+
 # Cabeceras de email inyectables via CRLF
 EMAIL_HEADERS = {
     "bcc", "cc", "to", "from", "reply-to", "subject",
@@ -115,8 +120,9 @@ def _has_multiple_emails(text: str) -> bool:
     """Detectar multiples direcciones de email en un campo."""
     if not text:
         return False
-    email_pattern = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
-    matches = email_pattern.findall(text)
+    # Limitar longitud para prevenir ReDoS (S5852)
+    text = text[:_MAX_EMAIL_SCAN_LEN]
+    matches = _EMAIL_RE.findall(text)
     return len(matches) > 1
 
 
