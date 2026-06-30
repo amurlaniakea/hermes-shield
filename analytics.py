@@ -219,7 +219,12 @@ def generate_weekly_report(log_path: str = DEFAULT_AUDIT_LOG) -> str:
     Returns:
         Formatted Markdown report string.
     """
-    log_file = Path(log_path)
+    # Validar path: debe ser absoluto o relativo seguro (sin traversal)
+    log_file = Path(log_path).resolve()
+    cwd = Path.cwd().resolve()
+    if not str(log_file).startswith(str(cwd)):
+        return "ERROR: log_path must be within the working directory."
+
     if not log_file.exists():
         return "No audit log found. No threats recorded yet."
 
