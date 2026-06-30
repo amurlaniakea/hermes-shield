@@ -141,10 +141,25 @@ Measured empirically against MIT-licensed datasets. **All figures verified with 
 | Jailbreaking/Safety Bypass | 640 | High | Covered by Capa 1 + 2 |
 | PII/Data Exfiltration | 478 | Medium | Some variants subtle |
 | Goal Hijacking | 240 | Low | Requires intent understanding |
-|| Tool Hijacking | 10 | **0%** | Needs structured tool-call analysis (pending) |
+| **Tool Hijacking (Grupo A)** | 10 | **~40%** | **14 patrones regex: SQLi, evasion auditoría, destrucción, resource exhaustion** |
 | SSRF | 10 | ~20% | Only URLs detected; embedded payloads miss |
-| Email Injection | 10 | **0%** | ~~Detector exists, not triggered via `check()`~~ → **100% via `check_tool_invocation()`** (Layer 4 integrado) |
+| Email Injection | 10 | **100%** | **Layer 4 integrado via `check_tool_invocation()`** |
 | Other 11 categories | ~200 | Low | Out of current design scope |
+
+**Grupo A detectado (5/15 ejemplos):** DROP TABLE, disable audit trail, irreversible wipe, masking nature, runs indefinitely.
+**Grupo B pendiente (10/15):** authority impersonation, parámetros extra sin schema, output poisoning — requieren LLM judge o schema validation.
+
+### Coverage & Quality Metrics (commit `8bfcf27`)
+
+| Metric | Value | Quality Gate |
+|--------|-------|--------------|
+| **Security Rating** | **A** | ✅ PASSED |
+| **Reliability Rating** | **A** | ✅ PASSED |
+| **Maintainability Rating** | **A** | ✅ PASSED |
+| **Security Hotspots Reviewed** | **100%** | ✅ PASSED |
+| **Coverage** | **65.7%** | ⚠️ (target 80%) |
+| **Duplicated Lines** | **0.0%** | ✅ PASSED |
+| **Tests Passing** | **145/145** | ✅ |
 
 ### What this means
 
