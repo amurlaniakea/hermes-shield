@@ -219,9 +219,10 @@ def generate_weekly_report(log_path: str = DEFAULT_AUDIT_LOG) -> str:
     Returns:
         Formatted Markdown report string.
     """
+    import tempfile
     ROOT_DIR = Path(__file__).parent.resolve()
     log_file = Path(log_path).resolve()
-    allowed_dirs = [ROOT_DIR, Path("/tmp").resolve()]
+    allowed_dirs = [ROOT_DIR, Path(tempfile.gettempdir()).resolve()]
     if not any(log_file.is_relative_to(d) for d in allowed_dirs):
         return "ERROR: log path must be within an allowed directory."
 
