@@ -224,7 +224,7 @@ def generate_weekly_report(log_path: str = DEFAULT_AUDIT_LOG) -> str:
     # Permitir paths dentro del cwd, tmp, o el home del usuario (CI)
     allowed_bases = [
         Path.cwd().resolve(),
-        Path("/tmp").resolve(),
+        Path("/tmp").resolve(),  # nosec B108 — base dir para validacion, no archivo temporal
         Path.home().resolve(),
     ]
     if not any(
