@@ -74,7 +74,27 @@ Acepta: `1`, `true`, `yes`, `on` (case-insensitive). Se puede togglear en calien
 
 ## Tool-Call Inspection (Layer 4)
 
-Para agentes con tool-calling, use las funciones especializadas ANTES de ejecutar la tool:
+### ShieldedAgent integrado (recomendado)
+
+```python
+from shielded_agent import ShieldedAgent
+
+agent = ShieldedAgent(api_key="tu-key")
+
+# ANTES de ejecutar cualquier tool-call que el LLM pidió:
+try:
+    agent.check_tool_invocation("send_email", {"subject": "Hi", "body": "..."})
+    # Si no lanza excepcion, la tool-call es segura
+except ShieldBlockedError as e:
+    print(f"Bloqueada: {e}")
+```
+
+Despacha automaticamente segun el tipo de herramienta:
+- `send_email`, `email`, `mail` → `check_email_params()` (CRLF injection)
+- `fetch`, `request`, `url`, `endpoint`, `webhook` → `check_tool_call()` (SSRF)
+- Otros → SAFE por defecto (futuros detectores)
+
+### Uso directo (sin ShieldedAgent)
 
 ```python
 from tool_call_detector import check_tool_call
@@ -83,12 +103,12 @@ from email_injection_detector import check_email_params
 # SSRF / tool-hijacking via URLs
 result = check_tool_call("fetch", {"url": user_input})
 if result.status.value == "blocked":
-    # Bloquear ejecucion de la tool
-    pass
+    pass  # Bloquear ejecucion de la tool
+
+# Email injection via CRLF
 result = check_email_params({"subject": subject, "body": body})
 if result.status.value == "blocked":
-    # Bloquear envio de email
-    pass
+    pass  # Bloquear envio de email
 ```
 
 ## Tests
@@ -121,9 +141,9 @@ Measured empirically against MIT-licensed datasets. **All figures verified with 
 | Jailbreaking/Safety Bypass | 640 | High | Covered by Capa 1 + 2 |
 | PII/Data Exfiltration | 478 | Medium | Some variants subtle |
 | Goal Hijacking | 240 | Low | Requires intent understanding |
-| Tool Hijacking | 10 | **0%** | Needs structured tool-call analysis (pending) |
+|| Tool Hijacking | 10 | **0%** | Needs structured tool-call analysis (pending) |
 | SSRF | 10 | ~20% | Only URLs detected; embedded payloads miss |
-| Email Injection | 10 | **0%** | Detector exists, not triggered via `check()` |
+| Email Injection | 10 | **0%** | ~~Detector exists, not triggered via `check()`~~ → **100% via `check_tool_invocation()`** (Layer 4 integrado) |
 | Other 11 categories | ~200 | Low | Out of current design scope |
 
 ### What this means
