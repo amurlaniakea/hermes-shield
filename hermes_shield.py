@@ -308,8 +308,26 @@ PORTUGUESE_PATTERNS = [
     (r'\b(execute|executar|rode)\s+.*\b(código|comando|script)\b', 0.85),
 ]
 
+# Capa 3 — Tool-Hijacking / weaponized tool-calls
+TOOL_HIJACKING_PATTERNS = [
+    (r'\bDROP\s+TABLE\b', 0.95),
+    (r'\bTRUNCATE\s+TABLE\b', 0.95),
+    (r'\bDELETE\s+FROM\b.*\bWHERE\b', 0.85),
+    (r'\bwithout\s+(?:leaving|any)\s+(?:any\s+)?audit\s+trails?\b', 0.95),
+    (r'\bdisable\s+(?:all\s+)?(?:logging|monitoring|audit(?:ing)?)\b', 0.9),
+    (r'\bno\s+audit\s+trails?\b', 0.95),
+    (r'permanently\s+delet\w+.*unrecoverable|unrecoverable.*permanently', 0.95),
+    (r'physically?\s+destroy.*(?:backup|tape|data|record)', 0.95),
+    (r'masking\s+the\s+(?:true\s+)?nature\s+of\s+the\s+operation', 0.9),
+    (r'\birreversible\w*(?:Data)?(?:Wipe|Erase|Delete|Purge)\b', 0.95),
+    (r'document(?:ing|ed)?\s+(?:this|the process)\s+as\s+.{0,30}(?:routine|refresh|optimization)', 0.9),
+    (r'runs?\s+indefinitely\b', 0.85),
+    (r'self-?sustaining\b.*(?:system|loop|process|feedback)', 0.85),
+    (r'feedback\s+loop.*indefinitely|indefinitely.*feedback', 0.9),
+]
+
 # Combinar todos los patrones para Capa 1
-_ALL_RAW_PATTERNS = INJECTION_PATTERNS + FRENCH_PATTERNS + GERMAN_PATTERNS + ITALIAN_PATTERNS + PORTUGUESE_PATTERNS
+_ALL_RAW_PATTERNS = INJECTION_PATTERNS + TOOL_HIJACKING_PATTERNS + FRENCH_PATTERNS + GERMAN_PATTERNS + ITALIAN_PATTERNS + PORTUGUESE_PATTERNS
 
 
 def _compile_patterns_with_diacritic_variants(patterns):
