@@ -219,13 +219,11 @@ def generate_weekly_report(log_path: str = DEFAULT_AUDIT_LOG) -> str:
     Returns:
         Formatted Markdown report string.
     """
-    # Validar path: resolver y verificar que no haya traversal
-    # Validar path: no debe apuntar a directorios sensibles del sistema
-    sensitive_dirs = ["/etc", "/var", "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc", "/dev"]
+    ROOT_DIR = Path(__file__).parent.resolve()
     log_file = Path(log_path).resolve()
-    for sensitive in sensitive_dirs:
-        if str(log_file).startswith(sensitive):
-            return f"ERROR: cannot access sensitive directory '{sensitive}'."
+    allowed_dirs = [ROOT_DIR, Path("/tmp").resolve()]
+    if not any(log_file.is_relative_to(d) for d in allowed_dirs):
+        return "ERROR: log path must be within an allowed directory."
 
     if not log_file.exists():
         return "No audit log found. No threats recorded yet."

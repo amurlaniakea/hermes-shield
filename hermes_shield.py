@@ -582,6 +582,8 @@ class HermesShield:
         self._embedding_checker = Layer2Detector(threshold=config["layer2_threshold"])
         self._rate_limiter = TokenBucketRateLimiter(rate=100, burst=200)
 
+    MAX_INPUT_LENGTH = 2000
+
     def check(self, text: str) -> ShieldResult:
         """Analizar input externo.
 
@@ -598,6 +600,10 @@ class HermesShield:
                 original_input=text,
                 threat_score=0.0,
             )
+
+        # Limitar longitud para prevenir ReDoS en regex
+        if len(text) > self.MAX_INPUT_LENGTH:
+            text = text[:self.MAX_INPUT_LENGTH]
 
         normalized = normalize_input(text)
         script_uncovered, script_desc = detect_uncovered_script(normalized)
